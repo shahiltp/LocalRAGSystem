@@ -1,0 +1,27 @@
+llama-index
+llama-index-readers-docling
+llama-index-embeddings-ollama
+llama-index-llms-ollama
+llama-index-vector-stores-postgres
+llama-index-storage-docstore-postgres
+python-dotenv
+psycopg2-binary==2.9.9
+crewai
+crewai-tools
+# Removed ragas and datasets due to NumPy conflicts in Docker
+# ragas
+# datasets
+rank_bm25
+llama-index-retrievers-bm25
+sentencepiece
+# Removed MLX model dependency for lighter Docker image
+# docling-ibm-models[mlx]
+fastapi
+uvicorn
+# Phoenix tracing packages
+arize-phoenix
+arize-phoenix-otel
+openinference-instrumentation-crewai
+openinference-instrumentation-litellm
+# Pin numpy to avoid conflicts
+numpy<2

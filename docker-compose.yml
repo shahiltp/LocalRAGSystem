@@ -1,0 +1,53 @@
+services:
+  postgres:
+    image: pgvector/pgvector:pg14
+    container_name: rag_postgres
+    environment:
+      POSTGRES_DB: ${DB_NAME:-rag_db}
+      POSTGRES_USER: ${DB_USER:-postgres}
+      POSTGRES_PASSWORD: ${DB_PASSWORD:-password}
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    restart: unless-stopped
+
+  rag-api:
+    build: .
+    container_name: crewai_rag_api
+    depends_on:
+      - postgres
+    environment:
+      # API connects to the postgres service by name inside the compose network
+      DATABASE_URL: postgresql://${DB_USER:-postgres}:${DB_PASSWORD:-password}@postgres:5432/${DB_NAME:-rag_db}
+      # LLM provider toggle and keys (OpenAI for faster testing)
+      LLM_PROVIDER: ${LLM_PROVIDER:-openai}
+      OPENAI_API_KEY: ${OPENAI_API_KEY}
+      OPENAI_MODEL: ${OPENAI_MODEL:-gpt-4o-mini}
+      # Optional override if using a proxy (normally not needed)
+      OPENAI_BASE_URL: ${OPENAI_BASE_URL:-}
+      # Phoenix can stay optional; defaults used in code
+      PHOENIX_HOST: ${PHOENIX_HOST:-host.docker.internal}
+    ports:
+      - "8000:8000"
+    restart: unless-stopped
+
+  # Optional Web UI (can be started later). If pull fails, skip this service.
+  open-webui:
+    image: ghcr.io/open-webui/open-webui:main
+    container_name: open-webui
+    depends_on:
+      - rag-api
+    environment:
+      # Point OpenWebUI to our API base if needed inside the compose network
+      # You will still need to configure connection in the UI
+      OLLAMA_BASE_URL: http://host.docker.internal:11434
+    ports:
+      - "3000:8080"
+    volumes:
+      - openwebui_data:/app/backend/data
+    restart: unless-stopped
+
+volumes:
+  postgres_data:
+  openwebui_data:
