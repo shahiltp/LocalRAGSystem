@@ -1,13 +1,12 @@
 # Agentic RAG local - Intelligent Document Q&A System
 
-<div align="center">2
+<div align="center">
 
 [![CrewAI](https://img.shields.io/badge/CrewAI-blue?style=for-the-badge&logo=docker&logoColor=white)](https://crewai.com)
 [![LlamaIndex](https://img.shields.io/badge/LlamaIndex-green?style=for-the-badge&logo=python&logoColor=white)](https://llamaindex.ai)
 [![OpenAI](https://img.shields.io/badge/OpenAI-green?style=for-the-badge&logo=openai&logoColor=white)](https://openai.com)
 [![Ollama](https://img.shields.io/badge/Ollama-purple?style=for-the-badge&logo=ollama&logoColor=white)](https://ollama.ai)
 [![PostgreSQL](https://img.shields.io/badge/PostgreSQL-blue?style=for-the-badge&logo=postgresql&logoColor=white)](https://postgresql.org)
-[![RAGAS]]
 
 **An intelligent agentic RAG system with multi-agent workflows, powered by CrewAI and flexible LLM support (OpenAI/Ollama)**
 
