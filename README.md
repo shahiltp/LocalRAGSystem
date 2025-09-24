@@ -7,6 +7,7 @@
 [![OpenAI](https://img.shields.io/badge/OpenAI-green?style=for-the-badge&logo=openai&logoColor=white)](https://openai.com)
 [![Ollama](https://img.shields.io/badge/Ollama-purple?style=for-the-badge&logo=ollama&logoColor=white)](https://ollama.ai)
 [![PostgreSQL](https://img.shields.io/badge/PostgreSQL-blue?style=for-the-badge&logo=postgresql&logoColor=white)](https://postgresql.org)
+[![RAGAS]( https://img.shields.io/badge/RAGAS-8A2BE2)](https://github.com/explodinggradients/ragas)
 
 **An intelligent agentic RAG system with multi-agent workflows, powered by CrewAI and flexible LLM support (OpenAI/Ollama)**
 
