@@ -5,6 +5,7 @@
 [![CrewAI](https://img.shields.io/badge/CrewAI-blue?style=for-the-badge&logo=docker&logoColor=white)](https://crewai.com)
 [![LlamaIndex](https://img.shields.io/badge/LlamaIndex-green?style=for-the-badge&logo=python&logoColor=white)](https://llamaindex.ai)
 [![OpenAI](https://img.shields.io/badge/OpenAI-green?style=for-the-badge&logo=openai&logoColor=white)](https://openai.com)
+[![Ollama](https://img.shields.io/badge/Ollama-purple?style=for-the-badge&logo=ollama&logoColor=white)](https://ollama.ai)
 [![PostgreSQL](https://img.shields.io/badge/PostgreSQL-blue?style=for-the-badge&logo=postgresql&logoColor=white)](https://postgresql.org)
 
 **An intelligent agentic RAG system with multi-agent workflows, powered by CrewAI and flexible LLM support (OpenAI/Ollama)**
@@ -17,7 +18,7 @@
 
 ### **AI-Powered Intelligence**
 - **Multi-Agent Workflow** - Specialized agents for research & synthesis
-- **Flexible LLM Support** - OpenAI (fast) or Ollama (local) models
+- **Flexible LLM Support** - OpenAI (cloud) or Ollama (local) models
 - **Contextual Responses** - AI-generated context for better understanding
 - **Smart Document Processing** - PDF/DOCX parsing with DoclingReader
 
@@ -59,8 +60,8 @@ graph TB
     
     subgraph "Retrieval Layer"
         VDB["PostgreSQL + pgvector<br/>Vector Database<br/>1536-dim (OpenAI) or 768-dim (Ollama)"]
-        LLM["OpenAI LLM<br/>gpt-4o-mini"]
-        EMB["OpenAI Embeddings<br/>text-embedding-3-small"]
+        LLM["Flexible LLM<br/>OpenAI gpt-4o-mini<br/>or Ollama gemma3:1b"]
+        EMB["Flexible Embeddings<br/>OpenAI text-embedding-3-small<br/>or Ollama nomic-embed-text"]
     end
     
     subgraph "Evaluation & Monitoring"
@@ -110,7 +111,7 @@ graph TB
 ### Prerequisites
 - Docker & Docker Compose
 - Python 3.8+
-- OpenAI API Key (for fast testing)
+- OpenAI API Key (for OpenAI) OR Ollama installed (for local)
 - 8GB+ RAM recommended
 
 ### Installation & Setup
@@ -126,11 +127,20 @@ pip install -r requirements.txt
 
 #### **Configure Environment**
 Create `.env` file:
+
+**Option 1: OpenAI (Cloud)**
 ```env
 DATABASE_URL=postgresql://postgres:password@localhost:5432/rag_db
 LLM_PROVIDER=openai
 OPENAI_API_KEY=sk-your-key-here
 OPENAI_MODEL=gpt-4o-mini
+```
+
+**Option 2: Ollama (Local)**
+```env
+DATABASE_URL=postgresql://postgres:password@localhost:5432/rag_db
+LLM_PROVIDER=ollama
+OLLAMA_BASE_URL=http://localhost:11434
 ```
 
 #### **Start Database**
@@ -141,6 +151,11 @@ docker-compose up -d postgres
 #### **Ingest Documents**
 ```bash
 # Place your PDFs/DOCX files in data/raw/
+# For Ollama: Ensure models are pulled first
+ollama pull gemma3:1b
+ollama pull nomic-embed-text
+
+# Run ingestion
 python src/data_ingestion/ingest.py
 ```
 
@@ -195,12 +210,13 @@ print(result)
 LLM_PROVIDER=openai
 OPENAI_API_KEY=sk-your-key
 OPENAI_MODEL=gpt-4o-mini
+OPENAI_BASE_URL=https://api.openai.com/v1 #optional because agent already know fron name openai
 ```
 
 ### **Using Ollama (Local - Free)**
 ```bash
 # Install Ollama
-ollama pull gemma2:2b
+ollama pull gemma3:1b
 ollama pull nomic-embed-text
 
 # Set environment
@@ -211,6 +227,12 @@ OLLAMA_BASE_URL=http://localhost:11434
 python -c "from src.data_ingestion.ingest import clean_existing_indexes; clean_existing_indexes()"
 python src/data_ingestion/ingest.py
 ```
+
+**Advantages:**
+- Completely free
+- Runs locally (privacy)
+- No internet required
+- Customizable models
 
 ---
 
@@ -304,6 +326,8 @@ Local-agentic-rag/
 ## Daily Startup Checklist
 
 ### **After PC Restart**
+
+**For OpenAI:**
 ```bash
 # 1. Start database
 docker-compose up -d postgres
@@ -320,6 +344,29 @@ $env:OPENAI_API_KEY="sk-your-key"
 python -c "import uvicorn; uvicorn.run('api:app', host='0.0.0.0', port=8001)"
 
 # 5. Start web UI (optional)
+docker-compose up -d open-webui
+```
+
+**For Ollama:**
+```bash
+# 1. Start Ollama
+ollama serve
+
+# 2. Start database
+docker-compose up -d postgres
+
+# 3. Activate environment
+.\venv\Scripts\activate
+
+# 4. Set environment variables
+$env:DATABASE_URL="postgresql://postgres:password@localhost:5432/rag_db"
+$env:LLM_PROVIDER="ollama"
+$env:OLLAMA_BASE_URL="http://localhost:11434"
+
+# 5. Start API
+python -c "import uvicorn; uvicorn.run('api:app', host='0.0.0.0', port=8001)"
+
+# 6. Start web UI (optional)
 docker-compose up -d open-webui
 ```
 
@@ -348,10 +395,16 @@ docker-compose restart postgres
 - Verify API is accessible: `curl http://localhost:8001/v1/models`
 - Check OpenWebUI connection settings
 - Restart OpenWebUI: `docker-compose restart open-webui`
+- For Ollama: Ensure Ollama is running and models are pulled
 
 #### **PDF Parsing Errors**
 - Update transformers: `pip install --upgrade transformers`
 - Use simpler PDFs or convert to DOCX format
+
+#### **Ollama Connection Issues**
+- Check if Ollama is running: `ollama list`
+- Verify models are pulled: `ollama pull gemma3:1b`
+- Check Ollama base URL in environment variables
 
 ---
 
@@ -394,7 +447,8 @@ This project is licensed under the MIT License - see the [LICENSE](LICENSE) file
 
 - [CrewAI](https://crewai.com) - Multi-agent orchestration
 - [LlamaIndex](https://llamaindex.ai) - Document processing & retrieval
-- [OpenAI](https://openai.com) - LLM and embeddings
+- [OpenAI](https://openai.com) - Cloud LLM and embeddings
+- [Ollama](https://ollama.ai) - Local LLM and embeddings
 - [PostgreSQL](https://postgresql.org) + [pgvector](https://github.com/pgvector/pgvector) - Vector database
 - [OpenWebUI](https://openwebui.com) - Beautiful chat interface
 
