@@ -9,9 +9,47 @@ from llama_index.embeddings.openai import OpenAIEmbedding
 from crewai.tools import tool
 from typing import Dict, Union, Any
 
+# Import database checker for validation
+from src.utils.database_checker import DatabaseChecker, quick_database_check
+
 
 # Load environment variables to get the database URL
 load_dotenv()
+
+def _extract_query_text(query):
+    """Coerce agent payload (str or nested dict) into a plain query string."""
+    if isinstance(query, str):
+        return query.strip()
+    if isinstance(query, dict):
+        # Common shapes we saw from the agent:
+        # {"query": "text"} OR {"query": {"description": "text"}} OR {"description": "text"}
+        candidates = []
+        q = query.get("query")
+        if isinstance(q, str):
+            candidates.append(q)
+        elif isinstance(q, dict):
+            for k in ("description", "text", "q", "prompt", "content"):
+                if k in q and q[k]:
+                    candidates.append(str(q[k]))
+        for k in ("description", "text", "q", "prompt", "content"):
+            if k in query and query[k]:
+                candidates.append(str(query[k]))
+        if candidates:
+            return next((c.strip() for c in candidates if str(c).strip()), str(query))
+        return str(query)
+    return str(query or "").strip()
+
+def _resolve_table_name(preferred=None):
+    """Pick a table that actually exists / works without re-ingest."""
+    # 1) explicit env override
+    if preferred:
+        return preferred
+    env_name = os.getenv("RAG_TABLE_NAME")
+    if env_name:
+        return env_name
+    # 2) common names we’ve seen in your runs
+    return "data_document_embeddings"  # first try; fallback in try/except below
+
 
 def warm_up_ollama(base_url: str, model_name: str):
     """Pre-warm the Ollama model to avoid cold start delays."""
@@ -37,11 +75,10 @@ def document_retrieval_tool(query: Union[str, Dict[str, Any]]) -> str:
         A formatted string containing relevant document chunks with source information
     """
     try:
-        # Parse the query
-        if isinstance(query, dict):
-            search_query = query.get("query", str(query))
-        else:
-            search_query = str(query)
+        # Parse the query (handle nested dict payloads from agents)
+        search_query = _extract_query_text(query)
+        if not search_query:
+            return "Error: Empty query provided to Document Retrieval Tool"
         
         # Get database URL from environment
         database_url = os.getenv("DATABASE_URL")
@@ -53,8 +90,8 @@ def document_retrieval_tool(query: Union[str, Dict[str, Any]]) -> str:
         # Parse database URL
         db_url_parts = urlparse(database_url)
         
-        # Use the correct table name from ingestion
-        table_name = "document_embeddings"
+        # Use the correct table name from ingestion - match your actual table
+        table_name = "data_data_document_embeddings"
         
         # Get provider configuration
         llm_provider = os.getenv("LLM_PROVIDER", "ollama").lower()
@@ -71,40 +108,62 @@ def document_retrieval_tool(query: Union[str, Dict[str, Any]]) -> str:
         else:
             # Fallback to Ollama
             ollama_base_url = os.getenv("OLLAMA_BASE_URL", "http://localhost:11434")
-            warm_up_ollama(ollama_base_url, "nomic-embed-text")
+            warm_up_ollama(ollama_base_url, "embeddinggemma")
             embed_model = OllamaEmbedding(
-                model_name="nomic-embed-text",
+                model_name="embeddinggemma",
                 base_url=ollama_base_url,
                 request_timeout=120.0
             )
             embed_dim = 768  # Ollama embeddings are 768-dimensional
         
-        # Create vector store (disable hybrid search to avoid text_search_tsv column requirement)
-        vector_store = PGVectorStore.from_params(
-            host=db_url_parts.hostname,
-            port=db_url_parts.port,
-            database=db_url_parts.path.lstrip('/'),
-            user=db_url_parts.username,
-            password=db_url_parts.password,
-            table_name=table_name,
-            embed_dim=embed_dim,
-            hybrid_search=False,  # Disable hybrid search to avoid text_search_tsv column
-        )
-
-        # Create a LlamaIndex VectorStoreIndex object from the vector store
-        index = VectorStoreIndex.from_vector_store(
-            vector_store=vector_store,
-            embed_model=embed_model
-        )
-
-        # Create a query engine with vector search only (no hybrid search)
-        query_engine = index.as_query_engine(
-            similarity_top_k=5
-        )
+        # Generate query embedding
+        query_embedding = embed_model.get_text_embedding(search_query)
         
-        # Query using vector search
-        response = query_engine.query(search_query)
-        retrieved_nodes = response.source_nodes
+        # Use direct SQL query instead of LlamaIndex VectorStoreIndex
+        # This bypasses the LlamaIndex PGVectorStore bug
+        import psycopg2
+        
+        conn = psycopg2.connect(database_url)
+        cur = conn.cursor()
+        
+        # Convert embedding to PostgreSQL vector format
+        embedding_str = '[' + ','.join(map(str, query_embedding)) + ']'
+        
+        # Direct similarity search query
+        cur.execute(f"""
+            SELECT text, metadata_, 
+                   1 - (embedding <=> %s::vector) as similarity
+            FROM {table_name}
+            ORDER BY embedding <=> %s::vector
+            LIMIT 5
+        """, (embedding_str, embedding_str))
+        
+        results = cur.fetchall()
+        conn.close()
+        
+        # Convert results to LlamaIndex format
+        retrieved_nodes = []
+        for text, metadata, similarity in results:
+            # Create a TextNode-like object
+            class Node:
+                def __init__(self, content, meta, score):
+                    self._content = content
+                    self._metadata = meta or {}
+                    self._score = score
+                
+                def get_content(self):
+                    return self._content
+                
+                @property
+                def metadata(self):
+                    return self._metadata
+                
+                @property
+                def score(self):
+                    return self._score
+            
+            node = Node(text, metadata, similarity)
+            retrieved_nodes.append(node)
         
         if not retrieved_nodes:
             return "No relevant documents found for this query."

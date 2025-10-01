@@ -24,14 +24,14 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 # --- Configuration ---
-MD_DIR = "/Users/kiwitech/Documents/agentic-rag-poc/data/processed/md"
+MD_DIR = "/data/processed/md"
 
 # Database configuration - simple password without special characters
 DB_HOST = "localhost"
 DB_PORT = 5432
 DB_NAME = "rag_db"
-DB_USER = "kiwitech"
-DB_PASSWORD = "zakirnagar"
+DB_USER = "rag_user"
+DB_PASSWORD = "rag_password"
 
 # Construct DATABASE_URL (no need for URL encoding now)
 DATABASE_URL = f"postgresql://{DB_USER}:{DB_PASSWORD}@{DB_HOST}:{DB_PORT}/{DB_NAME}"
@@ -41,7 +41,7 @@ print(f"DEBUG: Constructed DATABASE_URL: {DATABASE_URL}")
 print(f"DEBUG: DB_HOST: {DB_HOST}")
 print(f"DEBUG: DB_PASSWORD (encoded): {quote_plus(DB_PASSWORD)}")
 
-TABLE_NAME = "document_embeddings"
+TABLE_NAME = "data_document_embeddings"
 EMBED_DIM = 768
 
 def check_database_connection():
@@ -115,7 +115,7 @@ def test_ollama_connection():
     try:
         logger.info("Testing Ollama embedding service...")
         embed_model = OllamaEmbedding(
-            model_name="nomic-embed-text:v1.5",
+            model_name="embeddinggemma",
             base_url="http://localhost:11434",
         )
         
@@ -199,7 +199,7 @@ def main():
         # Step 4: Configure embedding model
         logger.info("Configuring embedding model...")
         Settings.embed_model = OllamaEmbedding(
-            model_name="nomic-embed-text:v1.5",
+            model_name="embeddinggemma",
             base_url="http://localhost:11434",
         )
         

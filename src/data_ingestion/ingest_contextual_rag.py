@@ -38,23 +38,23 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 # --- Configuration ---
-MD_DIR = "/Users/kiwitech/Documents/agentic-rag-poc/data/processed/md"
+MD_DIR = "/data/processed/md"
 
 # Database configuration
 DB_HOST = "localhost"
 DB_PORT = 5432
 DB_NAME = "rag_db"
-DB_USER = "kiwitech"
-DB_PASSWORD = "zakirnagar"
+DB_USER = "rag_user"
+DB_PASSWORD = "rag_password"
 
 # Construct DATABASE_URL
 DATABASE_URL = f"postgresql://{DB_USER}:{DB_PASSWORD}@{DB_HOST}:{DB_PORT}/{DB_NAME}"
 
-TABLE_NAME = "doc_md_contextual_20250830"
+TABLE_NAME = "data_doc_md_contextual_20250830"
 EMBED_DIM = 768
 
 # Contextual RAG Configuration
-CONTEXT_LLM_MODEL = "gemma3:4b"
+CONTEXT_LLM_MODEL = "mistral:latest"
 OLLAMA_BASE_URL = "http://localhost:11434"
 
 # Prompts for contextual retrieval
@@ -119,7 +119,7 @@ def test_ollama_connection():
         models = response.json().get('models', [])
         model_names = [model['name'] for model in models]
         
-        required_models = [CONTEXT_LLM_MODEL, "nomic-embed-text:v1.5"]
+        required_models = [CONTEXT_LLM_MODEL, "embeddinggemma"]
         missing_models = [model for model in required_models if model not in model_names]
         
         if missing_models:
@@ -145,18 +145,18 @@ def clear_existing_table():
             result = conn.execute(text(f"""
                 SELECT EXISTS (
                     SELECT FROM information_schema.tables 
-                    WHERE table_name = 'data_{TABLE_NAME}'
+                    WHERE table_name = '{TABLE_NAME}'
                 )
             """))
             table_exists = result.fetchone()[0]
             
             if table_exists:
                 # Clear the table
-                conn.execute(text(f"DELETE FROM data_{TABLE_NAME}"))
+                conn.execute(text(f"DELETE FROM {TABLE_NAME}"))
                 conn.commit()
-                logger.info(f"✅ Cleared table data_{TABLE_NAME}")
+                logger.info(f"✅ Cleared table {TABLE_NAME}")
             else:
-                logger.info(f"Table data_{TABLE_NAME} doesn't exist yet - will be created")
+                logger.info(f"Table {TABLE_NAME} doesn't exist yet - will be created")
                 
         return True
         
@@ -175,11 +175,12 @@ def create_contextual_nodes(nodes: List[TextNode], whole_document: str) -> List[
     """Create contextual nodes using Ollama LLM"""
     logger.info(f"Creating contextual nodes for {len(nodes)} chunks...")
     
-    # Initialize LLM for context generation
+    # Initialize LLM for context generation with shorter timeout
     context_llm = Ollama(
         model=CONTEXT_LLM_MODEL,
         base_url=OLLAMA_BASE_URL,
-        request_timeout=120.0
+        request_timeout=30.0,  # Reduced from 120s to 30s
+        temperature=0.1
     )
     
     enhanced_nodes = []
@@ -189,10 +190,10 @@ def create_contextual_nodes(nodes: List[TextNode], whole_document: str) -> List[
             # Create a deep copy of the node
             enhanced_node = copy.deepcopy(node)
             
-            # Generate context using LLM
+            # Generate context using LLM with shorter document context
             context_prompt = CONTEXT_PROMPT_TEMPLATE.format(
-                WHOLE_DOCUMENT=whole_document[:8000],  # Limit document size for context
-                CHUNK_CONTENT=node.text
+                WHOLE_DOCUMENT=whole_document[:4000],  # Reduced from 8000 to 4000 chars
+                CHUNK_CONTENT=node.text[:500]  # Limit chunk content to 500 chars
             )
             
             # Get context from LLM
@@ -208,15 +209,17 @@ def create_contextual_nodes(nodes: List[TextNode], whole_document: str) -> List[
             
             enhanced_nodes.append(enhanced_node)
             
-            # Log progress every 50 nodes
-            if (i + 1) % 50 == 0:
+            # Log progress every 10 nodes for better tracking
+            if (i + 1) % 10 == 0:
                 logger.info(f"Generated context for {i + 1}/{len(nodes)} nodes")
+                logger.info(f"   Last context: {context[:100]}...")
                 
         except Exception as e:
             logger.warning(f"Failed to generate context for node {i}: {e}")
+            logger.warning(f"   Chunk text: {node.text[:100]}...")
             # Fallback: use original node with page number
             fallback_node = copy.deepcopy(node)
-            fallback_node.metadata["context"] = f"Part of {node.metadata.get('file_name', 'document')}"
+            fallback_node.metadata["context"] = f"Part of {node.metadata.get('file_name', 'document')} - context generation failed"
             fallback_node.metadata["page_number"] = extract_page_number_from_text(node.text, i)
             enhanced_nodes.append(fallback_node)
     
@@ -281,7 +284,7 @@ def main():
         # Step 5: Configure embedding model
         logger.info("Configuring embedding model...")
         Settings.embed_model = OllamaEmbedding(
-            model_name="nomic-embed-text:v1.5",
+            model_name="embeddinggemma",
             base_url=OLLAMA_BASE_URL,
         )
         
@@ -364,6 +367,15 @@ def main():
             batch = all_enhanced_nodes[i:i + batch_size]
             index.insert_nodes(batch)
             logger.info(f"Progress: {min(i + batch_size, len(all_enhanced_nodes))}/{len(all_enhanced_nodes)} nodes inserted")
+            
+            # Print the last chunk in the batch for verification
+            if batch:
+                last_chunk = batch[-1]
+                logger.info(f"📄 Last chunk in batch {i//batch_size + 1}:")
+                logger.info(f"   Text: {last_chunk.text[:200]}...")
+                logger.info(f"   Context: {last_chunk.metadata.get('context', 'No context')}")
+                logger.info(f"   Page: {last_chunk.metadata.get('page_number', 'Unknown')}")
+                logger.info(f"   File: {last_chunk.metadata.get('file_name', 'Unknown')}")
         
         logger.info(f"✅ All {len(all_enhanced_nodes)} enhanced nodes inserted")
         
@@ -372,7 +384,7 @@ def main():
         engine = create_engine(DATABASE_URL)
         
         with engine.connect() as conn:
-            result = conn.execute(text(f"SELECT COUNT(*) FROM data_{TABLE_NAME}"))
+            result = conn.execute(text(f"SELECT COUNT(*) FROM {TABLE_NAME}"))
             total_count = result.fetchone()[0]
             logger.info(f"✅ Total indexed chunks: {total_count}")
             
@@ -382,7 +394,7 @@ def main():
                     COUNT(*) as total,
                     COUNT(CASE WHEN metadata_->>'context' IS NOT NULL THEN 1 END) as with_context,
                     COUNT(CASE WHEN metadata_->>'page_number' IS NOT NULL THEN 1 END) as with_page_num
-                FROM data_{TABLE_NAME}
+                FROM {TABLE_NAME}
             """))
             stats = result.fetchone()
             logger.info(f"✅ Chunks with context: {stats[1]}/{stats[0]}")
@@ -391,7 +403,7 @@ def main():
         logger.info("="*80)
         logger.info("🎉 CONTEXTUAL RAG INDEXING COMPLETED SUCCESSFULLY!")
         logger.info(f"📊 Enhanced {len(all_enhanced_nodes)} chunks with contextual information")
-        logger.info(f"🔍 Table: data_{TABLE_NAME}")
+        logger.info(f"🔍 Table: {TABLE_NAME}")
         logger.info(f"🧠 Context LLM: {CONTEXT_LLM_MODEL}")
         logger.info("="*80)
         

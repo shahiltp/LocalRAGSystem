@@ -14,7 +14,7 @@ if llm_provider == "openai":
         model=openai_model,
         api_key=os.getenv("OPENAI_API_KEY"),
         base_url=openai_base_url,
-        temperature=1,
+        temperature=0.5,
         timeout=300,
         verbose=True,
         max_tokens=8192,  # sensible default for OpenAI; override via model settings server-side
@@ -23,14 +23,14 @@ else:
     # Ollama configuration (default)
     ollama_base_url = os.getenv("OLLAMA_BASE_URL", "http://localhost:11434")
     ollama_llm = LLM(
-        model="ollama/gemma3:1b",  # Using gemma3:1b model (available on your system)
+        model="ollama/mistral:latest",  # Using mistral:7b model for better instruction following
         base_url=ollama_base_url,
-        temperature=1,
-        timeout=300,
+        temperature=0.2,
+        timeout=500,
         verbose=True,  # Enable verbose logging for debugging
-        # Token configuration for gemma3:1b
-        max_tokens=8192,   # Reduced for smaller model
-        num_ctx=8192,      # Context window size for 1b model
+        # Token configuration for mistral:7b
+        max_tokens=1024,   # Smaller cap for faster responses and fewer timeouts
+        num_ctx=8192,      # Context window size for mistral:7b
     )
 
 # --- AGENT 1: The Specialist Retriever ---

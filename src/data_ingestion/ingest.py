@@ -36,9 +36,10 @@ DB_USER = db_url_parts.username
 DB_PASSWORD = db_url_parts.password
 
 # --- Ollama Model Configuration ---
-EMBEDDING_MODEL_NAME = "nomic-embed-text"  # Removed :v1.5 version tag
+#EMBEDDING_MODEL_NAME = "nomic-embed-text"  # Removed :v1.5 version tag
+EMBEDDING_MODEL_NAME = "embeddinggemma"
 EMBEDDING_DIM = 768
-LLM_MODEL_NAME = "gemma3:1b"  # Using Gemma for context generation
+LLM_MODEL_NAME = "mistral:latest"  # Using Mistral for context generation
 
 # --- Provider Configuration ---
 LLM_PROVIDER = os.getenv("LLM_PROVIDER", "ollama").lower()
@@ -225,7 +226,10 @@ def main():
         )
     else:
         logging.info(f"🤖 Initializing Ollama LLM: '{LLM_MODEL_NAME}' for context generation...")
-        llm = Ollama(model=LLM_MODEL_NAME)
+        llm = Ollama(
+            model=LLM_MODEL_NAME,
+            temperature=0.1
+        )
 
     # --- 5. Chunking with SentenceSplitter ---
     logging.info("✂️ Initializing SentenceSplitter for optimal chunking...")
@@ -274,7 +278,7 @@ def main():
     # --- 8. Set up PGVector Store and Storage Context ---
     logging.info("🗄️ Setting up PGVectorStore and PostgresDocumentStore...")
     
-    vector_store_table_name = "document_embeddings"
+    vector_store_table_name = "data_document_embeddings"
     vector_store = PGVectorStore.from_params(
         host=DB_HOST,
         port=DB_PORT,
@@ -285,7 +289,7 @@ def main():
         embed_dim=EMBEDDING_DIM,
     )
 
-    doc_store_table_name = "document_text_store"
+    doc_store_table_name = "data_document_text_store"
     doc_store = PostgresDocumentStore.from_params(
         host=DB_HOST,
         port=DB_PORT,
